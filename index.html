@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tracking Demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+    margin: 0;
+    background: black;
+    overflow: hidden;
+}
+
+#container {
+    position: relative;
+    width: 100vw;
+    height: calc(100vh - 80px);
+}
+
+video, canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* mirror both */
+}
+
+#bar {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    height: 80px;
+    background: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+button {
+    padding: 15px 40px;
+    font-size: 20px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div id="container">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+</div>
+
+<div id="bar">
+    <button onclick="goBack()">Terug</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+}
+window.onresize = resize;
+
+// CAMERA
+navigator.mediaDevices.getUserMedia({
+    video: {
+        facingMode: "user",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+    }
+}).then(stream => {
+    video.srcObject = stream;
+});
+
+// HOLISTIC
+const holistic = new Holistic({
+    locateFile: file =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+});
+
+holistic.setOptions({
+    modelComplexity: 1,
+    smoothLandmarks: true,
+    enableSegmentation: false,
+    smoothSegmentation: true,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.7
+});
+
+holistic.onResults(results => {
+    if (!canvas.width) resize();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // FACE
+    if (results.faceLandmarks) {
+        const xs = results.faceLandmarks.map(p => p.x * canvas.width);
+        const ys = results.faceLandmarks.map(p => p.y * canvas.height);
+
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const rx = (maxX - minX) / 2;
+        const ry = (maxY - minY) / 2;
+
+        ctx.strokeStyle = "#0b2cff";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    // HANDS
+    if (results.leftHandLandmarks) {
+        drawConnectors(ctx, results.leftHandLandmarks, HAND_CONNECTIONS,
+            { color: '#00ffff', lineWidth: 1.5 });
+    }
+
+    if (results.rightHandLandmarks) {
+        drawConnectors(ctx, results.rightHandLandmarks, HAND_CONNECTIONS,
+            { color: '#00ffff', lineWidth: 1.5 });
+    }
+
+    // BODY
+    if (results.poseLandmarks) {
+        drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS,
+            { color: '#ff9f00', lineWidth: 1.5 });
+    }
+});
+
+// LOOP
+const camera = new Camera(video, {
+    onFrame: async () => {
+        await holistic.send({ image: video });
+    },
+    width: 1920,
+    height: 1080
+});
+camera.start();
+
+function goBack(){
+    window.location.href = "https://sites.google.com/chrlyceumdelft.nl/struxure/homepage/englishmenu/sections-of-cor/intelligent-vehicles";
+}
+</script>
+
+</body>
+</html>
