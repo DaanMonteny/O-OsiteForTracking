@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<title>Neural Flappy Bird</title>
+<style>
+body {
+    margin:0;
+    background:#111;
+    overflow:hidden;
+    font-family:Arial;
+}
+
+canvas {
+    display:block;
+    background:#222;
+}
+
+#footer {
+    position:fixed;
+    bottom:0;
+    width:100%;
+    height:60px;
+    background:#2a2a2a;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+#footer a {
+    color:#111;
+    text-decoration:none;
+    background:#fff;
+    padding:12px 30px;
+    border-radius:8px;
+    font-weight:bold;
+}
+</style>
+</head>
+
+<body>
+<canvas id="game"></canvas>
+
+<div id="footer">
+<a href="https://sites.google.com/chrlyceumdelft.nl/struxure/homepage/englishmenu/sections-of-cor/learning-and-autonomous-control/learningandautonimouscontrol-demo">
+Back
+</a>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function resize(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight - 60;
+}
+window.addEventListener("resize", resize);
+resize();
+
+// 🔥 population
+const POP = 120;
+
+let birds = [];
+let pipes = [];
+let generation = 1;
+
+const VIRTUAL_HEIGHT = 500;
+
+class NeuralNet {
+    constructor() {
+        this.w1 = Array.from({length:5},()=>Math.random()*2-1);
+        this.w2 = Array.from({length:5},()=>Math.random()*2-1);
+        this.bias = Math.random()*2-1;
+    }
+    copy() {
+        let n = new NeuralNet();
+        n.w1=[...this.w1];
+        n.w2=[...this.w2];
+        n.bias=this.bias;
+        return n;
+    }
+    mutate() {
+        for(let i=0;i<5;i++){
+            if(Math.random()<0.3) this.w1[i]+=Math.random()*0.5-0.25;
+            if(Math.random()<0.3) this.w2[i]+=Math.random()*0.5-0.25;
+        }
+        if(Math.random()<0.3) this.bias+=Math.random()*0.5-0.25;
+    }
+    think(inputs){
+        let sum = this.bias;
+        for(let i=0;i<5;i++){
+            sum += inputs[i]*this.w1[i];
+        }
+        return Math.tanh(sum);
+    }
+}
+
+class Bird {
+    constructor(brain){
+        this.x = canvas.width * 0.33;
+        this.y = canvas.height/2;
+        this.v = 0;
+        this.score = 0;
+        this.size = 26;
+        this.brain = brain||new NeuralNet();
+        this.dead=false;
+    }
+    update(){
+        this.v+=0.5;
+        this.y+=this.v;
+        this.score++;
+
+        let p = getNextPipe();
+        if(!p) return;
+
+        let inputs=[
+            this.y/canvas.height,
+            (p.x-this.x)/canvas.width,
+            p.top/canvas.height,
+            p.bottom/canvas.height,
+            this.v/10
+        ];
+
+        if(this.brain.think(inputs)>0.3) this.v=-7;
+
+        if(this.y<0||this.y>canvas.height) this.dead=true;
+    }
+    draw(){
+        ctx.fillStyle="#aaa";
+        ctx.fillRect(this.x-this.size/2,this.y-this.size/2,this.size,this.size);
+    }
+}
+
+class Pipe{
+    constructor(){
+        const scale = canvas.height / VIRTUAL_HEIGHT;
+
+        this.x = canvas.width;
+        this.w = 90;
+
+        let g = 140;
+        let min = 40;
+        let max = VIRTUAL_HEIGHT - g - 40;
+
+        let t = Math.random()*(max-min)+min;
+
+        this.top = t * scale;
+        this.bottom = (t + g) * scale;
+    }
+    update(){ this.x-=3; }
+    draw(){
+        ctx.fillStyle="#555";
+        ctx.fillRect(this.x,0,this.w,this.top);
+        ctx.fillRect(this.x,this.bottom,this.w,canvas.height);
+    }
+}
+
+function getNextPipe(){
+    for(let p of pipes){
+        if(p.x+p.w > birds[0].x) return p;
+    }
+    return pipes[0];
+}
+
+function reset(){
+    let best=birds.sort((a,b)=>b.score-a.score)[0];
+    birds=[];
+    for(let i=0;i<POP;i++){
+        let b=new Bird(best.brain.copy());
+        b.brain.mutate();
+        birds.push(b);
+    }
+    pipes=[new Pipe()];
+    generation++;
+}
+
+function drawBrain(brain){
+    let x=30,y=70;
+    let inputsY=[0,1,2,3,4].map(i=>y+i*28);
+    let hiddenY=y+60;
+    let outY=y+60;
+
+    inputsY.forEach((iy,i)=>{
+        let w=brain.w1[i];
+        ctx.strokeStyle=w>0?`rgba(0,200,255,${Math.abs(w)})`:`rgba(255,100,100,${Math.abs(w)})`;
+        ctx.lineWidth=Math.abs(w)*2+0.5;
+        ctx.beginPath();
+        ctx.moveTo(x,iy);
+        ctx.lineTo(x+90,hiddenY);
+        ctx.stroke();
+    });
+
+    ctx.strokeStyle="#aaa";
+    ctx.beginPath();
+    ctx.moveTo(x+90,hiddenY);
+    ctx.lineTo(x+150,outY);
+    ctx.stroke();
+
+    ctx.fillStyle="#ddd";
+    inputsY.forEach(iy=>{
+        ctx.beginPath();
+        ctx.arc(x,iy,5,0,Math.PI*2);
+        ctx.fill();
+    });
+
+    ctx.beginPath();
+    ctx.arc(x+90,hiddenY,7,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(x+150,outY,7,0,Math.PI*2);
+    ctx.fill();
+}
+
+function loop(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    let last=pipes[pipes.length-1];
+    if(!last || last.x < canvas.width - 420) pipes.push(new Pipe());
+
+    pipes.forEach(p=>{p.update();p.draw();});
+    if(pipes[0].x<-150) pipes.shift();
+
+    birds.forEach(b=>{
+        if(!b.dead){
+            b.update();
+            b.draw();
+            let p=getNextPipe();
+            if(
+                b.x>p.x &&
+                b.x<p.x+p.w &&
+                (b.y-b.size/2<p.top||b.y+b.size/2>p.bottom)
+            ) b.dead=true;
+        }
+    });
+
+    let alive=birds.filter(b=>!b.dead);
+    if(alive.length==0) reset();
+
+    ctx.fillStyle="white";
+    ctx.font = "18px Arial";
+    ctx.fillText("Generation: "+generation,20,30);
+
+    if(alive[0]) drawBrain(alive[0].brain);
+
+    requestAnimationFrame(loop);
+}
+
+for(let i=0;i<POP;i++) birds.push(new Bird());
+pipes.push(new Pipe());
+loop();
+</script>
+</body>
+</html>
