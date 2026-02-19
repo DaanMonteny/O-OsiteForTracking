@@ -2,28 +2,100 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<title>Black Button</title>
-<style>
-    html, body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-    }
+<title>Robot Standby</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    a {
-        display: block;
-        width: 100vw;
-        height: 100vh;
-        background: black;
-        cursor: pointer;
-        text-decoration: none;
-    }
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    background: black;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+video {
+    display: none; /* volledig onzichtbaar */
+}
 </style>
 </head>
 
 <body>
-    <a href="https://sites.google.com/chrlyceumdelft.nl/struxure/homepage"></a>
+
+<video id="video" autoplay playsinline></video>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+const video = document.getElementById("video");
+
+// start camera
+navigator.mediaDevices.getUserMedia({
+    video: {
+        facingMode: "user",
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+    }
+}).then(stream => {
+    video.srcObject = stream;
+});
+
+// POSE DETECTOR
+const pose = new Pose({
+    locateFile: file =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+});
+
+pose.setOptions({
+    modelComplexity: 1,
+    smoothLandmarks: true,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6
+});
+
+let detectedFrames = 0;
+
+pose.onResults(results => {
+    if (!results.poseLandmarks) {
+        detectedFrames = 0;
+        return;
+    }
+
+    // Bereken bounding box grootte
+    const xs = results.poseLandmarks.map(p => p.x);
+    const ys = results.poseLandmarks.map(p => p.y);
+
+    const width = Math.max(...xs) - Math.min(...xs);
+    const height = Math.max(...ys) - Math.min(...ys);
+
+    const size = width * height;
+
+    // "afstand" check
+    if (size > 0.06) {   // groter = dichterbij
+        detectedFrames++;
+
+        // persoon stabiel gezien (geen false triggers)
+        if (detectedFrames > 15) {
+            window.location.href =
+            "https://sites.google.com/chrlyceumdelft.nl/struxure/homepage";
+        }
+    } else {
+        detectedFrames = 0;
+    }
+});
+
+// camera loop
+const camera = new Camera(video, {
+    onFrame: async () => {
+        await pose.send({ image: video });
+    },
+    width: 1280,
+    height: 720
+});
+
+camera.start();
+</script>
+
 </body>
 </html>
